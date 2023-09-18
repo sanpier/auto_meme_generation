@@ -1,0 +1,12 @@
+accelerate
+torchvision
+transformers
+ftfy
+tensorboard
+Jinja2
+safetensors
+xformers
+bitsandbytes
+gradio 
+natsort
+diffusers

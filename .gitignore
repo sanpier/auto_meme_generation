@@ -161,6 +161,8 @@ cython_debug/
 
 # data
 memes/
+model/
+data/
 desktop.ini
 ./desktop.ini
 
