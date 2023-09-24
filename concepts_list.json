@@ -1,8 +1,8 @@
 [
     {
-        "instance_prompt": "photo of zwx dog",
-        "class_prompt": "photo of a dog",
-        "instance_data_dir": "/data/zwx",
-        "class_data_dir": "/data/dog"
+        "instance_prompt": "photo of potter boss",
+        "class_prompt": "photo of a person",
+        "instance_data_dir": "data/ytr",
+        "class_data_dir": "data/person"
     }
 ]
