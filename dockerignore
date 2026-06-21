@@ -1,0 +1,16 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+.ipynb_checkpoints
+.env
+.venv
+venv
+outputs
+output
+images
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.jsonl

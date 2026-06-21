@@ -166,3 +166,14 @@ data/
 desktop.ini
 ./desktop.ini
 
+.git
+.gitignore
+__pycache__
+.ipynb_checkpoints
+.env
+outputs
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.jsonl
