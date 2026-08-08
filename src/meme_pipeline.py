@@ -1,14 +1,18 @@
 import json
 import os
+import shutil
+import tempfile
 import time
 from datetime import datetime, timezone
-from IPython.display import display
+from IPython.display import display, Markdown, Image as IPyImage
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from typing import Any
 from src.utils.data_classes import *
+from src.utils.google_drive_uploader import upload_file_to_drive
 from src.utils.prompts import *
 from src.utils.schemas import *
+from textwrap import dedent
 
 
 class MemePipeline:
@@ -19,8 +23,9 @@ class MemePipeline:
         image_client,
         style_profile="balanced",
         n_angles_per_group=3,
-        n_memes_per_angle=1,
+        n_memes_per_angle=3,
         verbose=True,
+        upload_to_drive=False
     ):
         self.text_llm = text_llm
         self.image_client = image_client
@@ -29,10 +34,24 @@ class MemePipeline:
         self.n_angles_per_group = n_angles_per_group
         self.n_memes_per_angle = n_memes_per_angle
         self.verbose = verbose
-        self.meme_log_path = "data/assets/meme_log.jsonl"
+
+        self.upload_to_drive = upload_to_drive
+        self.temp_root_dir = None
         self.template_json_path = "data/assets/meme_template.json"
-        self.output_dir = Path("data/memes")
+
+        if self.upload_to_drive:
+            self.temp_root_dir = Path(tempfile.mkdtemp(prefix="tmp"))
+            self.output_dir = self.temp_root_dir / "memes"
+            self.meme_log_path = str(self.temp_root_dir / "meme_log.jsonl")
+        else:
+            self.output_dir = Path("data/memes")
+            self.meme_log_path = "data/assets/meme_log.jsonl"
+
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        if self.verbose:
+            print(f"Output dir: {self.output_dir}")
+            print(f"Meme log path: {self.meme_log_path}")
+
 
     # -------------------------
     # Helpers
@@ -53,6 +72,46 @@ class MemePipeline:
             + meme.lens_score * w["lens"]
             + meme.originality_score * w["originality"]
         )
+
+    def upload_outputs_to_drive(self):
+        if not self.upload_to_drive:
+            return []
+        uploaded = []
+        files_to_upload = []
+        if self.output_dir.exists():
+            files_to_upload.extend(
+                path for path in self.output_dir.iterdir()
+                if path.is_file() and path.suffix.lower() in [".png", ".jpg", ".jpeg", ".webp"]
+            )
+
+        log_path = Path(self.meme_log_path)
+        if log_path.exists():
+            files_to_upload.append(log_path)
+        for file_path in files_to_upload:
+            try:
+                result = upload_file_to_drive(str(file_path))
+                uploaded.append(result)
+                if self.verbose:
+                    print(f"Uploaded to Drive: {file_path.name}")
+            except Exception as e:
+                print(f"Google Drive upload failed for {file_path}: {e}")
+        return uploaded
+
+    def cleanup_temp_outputs(self):
+        if not self.upload_to_drive:
+            return
+        if self.temp_root_dir and Path(self.temp_root_dir).exists():
+            shutil.rmtree(self.temp_root_dir, ignore_errors=True)
+            if self.verbose:
+                print(f"Removed temp folder: {self.temp_root_dir}")
+
+    def finalize_outputs(self):
+        if not self.upload_to_drive:
+            return
+        try:
+            self.upload_outputs_to_drive()
+        finally:
+            self.cleanup_temp_outputs()
 
 
     # -------------------------
@@ -194,6 +253,10 @@ class MemePipeline:
     # Stage 3: Generate Memes
     # -------------------------
     def generate_memes_for_angle(self, angle: AngleCandidate) -> list[MemeCandidate]:
+        humor_types_text = "\n".join(
+            f"- {name}: {description}"
+            for name, description in HUMOR_TYPE_GUIDE.items()
+        )
         data = self.text_llm.generate_json(
             system=MEME_GENERATOR_SYSTEM,
             prompt=MEME_GENERATOR_PROMPT.format(
@@ -202,7 +265,7 @@ class MemePipeline:
                 source_trends=json.dumps(angle.source_trends, ensure_ascii=False, indent=2),
                 summary=angle.summary or "",
                 angle=angle.angle,
-                available_humor_types=HUMOR_TYPES,
+                available_humor_types=humor_types_text,
             ) + "\n\nSTYLE DIRECTION:\n" + self.style["extra_instruction"],
             schema_hint=MEME_SCHEMA,
             temperature=1,
@@ -276,13 +339,17 @@ class MemePipeline:
             }
             for i, meme in enumerate(memes)
         ]
-
+        humor_types_text = "\n".join(
+            f"- {name}: {description}"
+            for name, description in HUMOR_TYPE_GUIDE.items()
+        )
         data = self.text_llm.generate_json(
             system=QUALITY_CRITIC_SYSTEM,
             prompt=QUALITY_CRITIC_PROMPT.format(
                 group_name=group_name,
                 summary=summary or "",
                 angle=angle,
+                available_humor_types=humor_types_text,
                 memes_json=json.dumps(memes_json, ensure_ascii=False, indent=2),
             ) + "\n\nSTYLE DIRECTION:\n" + self.style["extra_instruction"],
             schema_hint=CRITIC_SCHEMA,
@@ -466,6 +533,7 @@ class MemePipeline:
                     image_prompt=meme.image_prompt,
                 ),
                 filename=filename,
+                output_dir=str(self.output_dir),
             )
 
             self.add_signature_to_image(
@@ -479,8 +547,15 @@ class MemePipeline:
 
             meme.image_path = image_result.path
             meme.image_model = image_result.model
-            results.append(meme)
+            try:
+                self.generate_social_post_text(meme)
+            except Exception as e:
+                meme.hashtags = []
+                meme.social_post_text = None
+                if self.verbose:
+                    print(f"Social post generation failed: {e}")
 
+            results.append(meme)
             log_path = self.append_meme_log(meme)
             if self.verbose:
                 print(f"Generated {filename}: {meme.caption}")
@@ -491,33 +566,8 @@ class MemePipeline:
 
 
     # -------------------------
-    # Stage 7: Generate Hashtags
+    # Stage 7: Generate Social Post
     # -------------------------
-    def find_meme_log_record(self, image_name: str) -> dict | None:
-        log_file = Path(self.meme_log_path)
-        if not log_file.exists():
-            return None
-
-        image_stem = Path(image_name).stem
-        with open(log_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-
-                image = record.get("image", {})
-                logged_name = image.get("image_name")
-                if not logged_name:
-                    continue
-
-                if Path(logged_name).stem == image_stem:
-                    return record
-        return None
-
     def clean_hashtag(self, tag: str) -> str | None:
         if not tag:
             return None
@@ -533,23 +583,39 @@ class MemePipeline:
             return None
         return tag
 
-    def generate_social_hashtags(self, record: dict) -> list[str]:
-        sources = record.get("source_sources", [])
-        source_trends = record.get("source_trends", [])
-        source_urls = record.get("source_urls", [])
-
-        context = {
-            "group_name": record.get("group_name"),
-            "summary": record.get("summary"),
-            "sources": sources,
-            "source_trends": source_trends,
-            "source_urls": source_urls,
-        }
+    def generate_social_hashtags(
+        self,
+        meme_or_record: MemeCandidate | dict,
+    ) -> list[str]:
+        if isinstance(meme_or_record, MemeCandidate):
+            context = {
+                "group_name": meme_or_record.group_name,
+                "summary": meme_or_record.summary,
+                "sources": meme_or_record.source_sources,
+                "source_trends": meme_or_record.source_trends,
+                "source_urls": meme_or_record.source_urls,
+                "caption": meme_or_record.caption,
+                "humor_type": meme_or_record.humor_type,
+            }
+        else:
+            context = {
+                "group_name": meme_or_record.get("group_name"),
+                "summary": meme_or_record.get("summary"),
+                "sources": meme_or_record.get("source_sources", []),
+                "source_trends": meme_or_record.get("source_trends", []),
+                "source_urls": meme_or_record.get("source_urls", []),
+                "caption": meme_or_record.get("caption"),
+                "humor_type": meme_or_record.get("humor_type"),
+            }
 
         data = self.text_llm.generate_json(
             system=SOCIAL_HASHTAG_SYSTEM,
             prompt=SOCIAL_HASHTAG_PROMPT.format(
-                context=json.dumps(context, ensure_ascii=False, indent=2)
+                context=json.dumps(
+                    context,
+                    ensure_ascii=False,
+                    indent=2,
+                )
             ),
             schema_hint=SOCIAL_HASHTAG_SCHEMA,
             temperature=0.5,
@@ -557,11 +623,16 @@ class MemePipeline:
 
         hashtags = []
         seen = set()
+        mandatory_hashtags = {
+            tag.lower()
+            for tag in MANDATORY_SOCIAL_HASHTAGS
+        }
+
         for tag in data.get("hashtags", []):
             cleaned = self.clean_hashtag(tag)
             if not cleaned:
                 continue
-            if cleaned in MANDATORY_SOCIAL_HASHTAGS:
+            if cleaned in mandatory_hashtags:
                 continue
             if cleaned in seen:
                 continue
@@ -569,21 +640,59 @@ class MemePipeline:
             hashtags.append(cleaned)
 
         for tag in MANDATORY_SOCIAL_HASHTAGS:
-            if tag not in seen:
-                hashtags.append(tag)
-                seen.add(tag)
+            cleaned = self.clean_hashtag(tag)
+            if cleaned and cleaned not in seen:
+                hashtags.append(cleaned)
+                seen.add(cleaned)
+
         return hashtags
 
-    def get_social_post_text(self, image_name: str) -> str | None:
-        record = self.find_meme_log_record(image_name)
-        if not record:
-            return None
+    def generate_social_post_text(
+        self,
+        meme: MemeCandidate,
+    ) -> str:
+        hashtags = self.generate_social_hashtags(meme)
+        trends_text = (
+            "\n".join(meme.source_trends)
+            if meme.source_trends else "Unknown"
+        )
+        links_text = (
+            "\n".join(meme.source_urls)
+            if meme.source_urls else "Unknown"
+        )
+        hashtags_text = " ".join(hashtags)
 
+        post_text = (
+            f"{trends_text}\n"
+            f"{links_text}\n"
+            ".\n"
+            ".\n"
+            ".\n"
+            ".\n"
+            ".\n"
+            f"{hashtags_text}"
+        )
+        meme.hashtags = hashtags
+        meme.social_post_text = post_text
+        return post_text
+
+    def generate_social_post_for_given_record(
+        self,
+        record: dict,
+    ) -> tuple[list[str], str]:
+        hashtags = self.generate_social_hashtags(record)
         source_trends = record.get("source_trends", [])
         source_urls = record.get("source_urls", [])
-        trends_text = "\n".join(source_trends) if source_trends else "Unknown"
-        links_text = "\n".join(source_urls) if source_urls else "Unknown"
-        hashtags = self.generate_social_hashtags(record)
+        trends_text = (
+            "\n".join(source_trends)
+            if source_trends
+            else "Unknown"
+        )
+        links_text = (
+            "\n".join(source_urls)
+            if source_urls
+            else "Unknown"
+        )
         hashtags_text = " ".join(hashtags)
         post_text = (
             f"{trends_text}\n"
@@ -595,7 +704,7 @@ class MemePipeline:
             ".\n"
             f"{hashtags_text}"
         )
-        print(post_text)
+        return hashtags, post_text
 
 
     # -------------------------
@@ -627,17 +736,86 @@ class MemePipeline:
             },
             "image": {
                 "image_path": meme.image_path,
-                "image_name": Path(meme.image_path).name if meme.image_path else None,
+                "image_name": (
+                    Path(meme.image_path).name
+                    if meme.image_path
+                    else None
+                ),
+            },
+            "social": {
+                "hashtags": meme.hashtags or [],
+                "post_text": meme.social_post_text,
             },
         }
 
-        Path(self.meme_log_path).parent.mkdir(parents=True, exist_ok=True)
-        with open(self.meme_log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        Path(self.meme_log_path).parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        with open(
+            self.meme_log_path,
+            "a",
+            encoding="utf-8",
+        ) as f:
+            f.write(
+                json.dumps(
+                    record,
+                    ensure_ascii=False,
+                ) + "\n"
+            )
 
         return self.meme_log_path
+    
+    def update_meme_log_record(
+        self,
+        image_name: str,
+        updated_record: dict,
+    ) -> bool:
+        log_file = Path(self.meme_log_path)
+        if not log_file.exists():
+            return False
 
-    def get_meme_news_text(self, image_name: str) -> str | None:
+        image_stem = Path(image_name).stem
+        records = []
+        updated = False
+        with open(log_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                logged_name = record.get("image", {}).get("image_name")
+                if (
+                    not updated
+                    and logged_name
+                    and Path(logged_name).stem == image_stem
+                ):
+                    records.append(updated_record)
+                    updated = True
+                else:
+                    records.append(record)
+
+        if not updated:
+            return False
+
+        temp_file = log_file.with_suffix(log_file.suffix + ".tmp")
+        with open(temp_file, "w", encoding="utf-8") as f:
+            for record in records:
+                f.write(
+                    json.dumps(
+                        record,
+                        ensure_ascii=False,
+                    ) + "\n"
+                )
+        os.replace(temp_file, log_file)
+        return True
+
+    def find_meme_log_record(self, image_name: str) -> dict | None:
         log_file = Path(self.meme_log_path)
         if not log_file.exists():
             return None
@@ -648,7 +826,6 @@ class MemePipeline:
                 line = line.strip()
                 if not line:
                     continue
-
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError:
@@ -659,34 +836,136 @@ class MemePipeline:
                 if not logged_name:
                     continue
 
-                if Path(logged_name).stem != image_stem:
-                    continue
+                if Path(logged_name).stem == image_stem:
+                    return record
+        return None
+    
+    def get_meme_news_text(self, image_name: str) -> str | None:
+        record = self.find_meme_log_record(image_name)
+        if not record:
+            print(f"Meme log record not found: {image_name}")
+            return None
 
-                summary = record.get("summary", "")
-                source_urls = record.get("source_urls", [])
-                source_trends = record.get("source_trends", [])
+        social = record.get("social") or {}
+        social_post_text = social.get("post_text")
+        hashtags = social.get("hashtags") or []
+        if not social_post_text:
+            if self.verbose:
+                print(
+                    f"[SOCIAL BACKFILL] Social post missing for "
+                    f"{image_name}. Generating..."
+                )
 
-                angle = record.get("angle", "")
-                caption = record.get("caption", "")
-                humor_type = record.get("humor_type", "")
+            try:
+                hashtags, social_post_text = (
+                    self.generate_social_post_for_given_record(record)
+                )
+                record["social"] = {
+                    **social,
+                    "hashtags": hashtags,
+                    "post_text": social_post_text,
+                    "model": getattr(
+                        self.text_llm,
+                        "last_used_model",
+                        None,
+                    ),
+                    "generated_at": datetime.now(
+                        timezone.utc
+                    ).isoformat(),
+                    "backfilled": True,
+                }
+                updated = self.update_meme_log_record(
+                    image_name=image_name,
+                    updated_record=record,
+                )
 
-                scores = record.get("scores", {})
-                score = scores.get("meme_score", 0)
-                lens = scores.get("lens_score", 0)
-                visual = scores.get("visual_score", 0)
-                fun = scores.get("fun_score", 0)
-                originality = scores.get("originality_score", 0)
+                if self.verbose:
+                    if updated:
+                        print(
+                            f"[SOCIAL BACKFILL] Generated "
+                            f"{len(hashtags)} hashtags and updated log."
+                        )
+                    else:
+                        print(
+                            "[SOCIAL BACKFILL] Social post generated, "
+                            "but log entry could not be updated."
+                        )
 
+            except Exception as e:
+                print(
+                    f"[SOCIAL BACKFILL] Generation failed for "
+                    f"{image_name}: {e}"
+                )
+                hashtags = []
+                social_post_text = None
 
-                links_text = "\n".join(f"- {url}" for url in source_urls) or "- Unknown"
-                trends_text = "\n".join(f"- {trend}" for trend in source_trends) or "- Unknown"
+        summary = record.get("summary", "")
+        source_urls = record.get("source_urls", [])
+        source_trends = record.get("source_trends", [])
 
-                print(f"""
-                    SUMMARY       : {summary}
-                    NEWS          : {trends_text} | {links_text}
-                    HUMOR         : {angle} | {humor_type} | {caption}
-                    SCORE         : {score:.2f} (lens: {lens} / visual: {visual} / fun: {fun} / originality: {originality})
-                """)
+        angle = record.get("angle", "")
+        caption = record.get("caption", "")
+        humor_type = record.get("humor_type", "")
+
+        scores = record.get("scores", {})
+        score = scores.get("meme_score", 0)
+        lens = scores.get("lens_score", 0)
+        visual = scores.get("visual_score", 0)
+        fun = scores.get("fun_score", 0)
+        originality = scores.get("originality_score", 0)
+
+        links_text = (
+            "\n".join(f"- {url}" for url in source_urls)
+            or "- Unknown"
+        )
+        trends_text = (
+            "\n".join(f"- {trend}" for trend in source_trends)
+            or "- Unknown"
+        )
+        hashtags_text = (
+            " ".join(hashtags)
+            if hashtags
+            else "Not generated"
+        )
+        social_post_display = (
+            social_post_text
+            if social_post_text
+            else "Not generated"
+        )
+
+        output = dedent(
+            f"""
+                SUMMARY
+                {summary or "Unknown"}
+
+                NEWS
+                {trends_text}
+
+                ARTICLE LINKS
+                {links_text}
+
+                HUMOR
+                Angle       : {angle or "N/A"}
+                Type        : {humor_type or "Unknown"}
+                Caption     : {caption or "Unknown"}
+
+                SCORE
+                {score:.2f} (
+                    lens: {lens}
+                    visual: {visual}
+                    fun: {fun}
+                    originality: {originality}
+                )
+
+                HASHTAGS
+                {hashtags_text}
+
+                SOCIAL POST
+                {social_post_display}
+            """
+        ).strip()
+        print(output)
+        return output
 
 
     # -------------------------
@@ -782,40 +1061,20 @@ class MemePipeline:
             print()
 
     def display_generated_memes(self, memes: list[MemeCandidate]):
-        for i, meme in enumerate(memes, start=1):
+        for meme in memes:
             print("=" * 80)
-            print("GENERATED MEME:", i)
-            print("GROUP         :", meme.group_name)
-            print("SUMMARY       :", meme.summary)
-            print("SOURCES       :", ", ".join(meme.source_sources))
-            print()
+            image_name = (
+                Path(meme.image_path).stem
+                if meme.image_path
+                else "Unknown"
+            )
 
-            print("ARTICLE LINKS:")
-            if meme.source_urls:
-                for url in meme.source_urls:
-                    print("-", url)
-            else:
-                print("- None")
-
-            print()
-            print("SOURCE TRENDS:")
-            for trend in meme.source_trends:
-                print("-", trend)
-
-            print()
-            print("ANGLE         :", meme.angle)
-            print("CAPTION       :", meme.caption)
-            print("HUMOR TYPE    :", meme.humor_type)
-            print("SCORE         :", self.score_text(meme))
-            print("IMAGE MODEL   :", meme.image_model)
-            print("IMAGE PROMPT  :", meme.image_prompt)
-            print()
-
+            display(Markdown(f"## `{image_name}`"))
+            if getattr(meme, "social_post_text", None):
+                print(meme.social_post_text)
+                print()
             if meme.image_path:
-                image = Image.open(meme.image_path)
-                display(image)
-                image.close()
-            print()
+                display(IPyImage(filename=meme.image_path, width=500, height=500))
 
 
     # -------------------------
@@ -842,8 +1101,12 @@ class MemePipeline:
             Quality Critic
                 ↓
             Select Passing Memes
+                ↓ 
+            Generate Image
                 ↓
-            Image Model
+            Generate Social Post
+                ↓
+            Save Log
         """
         if self.verbose:
             print("1.STEP: Generate Angle Groups...")
@@ -883,10 +1146,13 @@ class MemePipeline:
             return selected_memes
 
         if self.verbose:
-            print("\n\n6.STEP: Image Meme Generation...")
+            print("\n\n6.STEP: Image & Social Post Generation + Logging...")
 
-        generated_memes = self.generate_caricatures(selected_memes)
-        return generated_memes
+        try:
+            generated_memes = self.generate_caricatures(selected_memes)
+            return generated_memes
+        finally:
+            self.finalize_outputs()
 
     
     # -------------------------
@@ -989,7 +1255,10 @@ class MemePipeline:
                 "notes": template.notes,
             } for template in templates
         ]
-
+        humor_types_text = "\n".join(
+            f"- {name}: {description}"
+            for name, description in HUMOR_TYPE_GUIDE.items()
+        )
         data = self.text_llm.generate_json(
             system=TEMPLATE_MEME_SYSTEM,
             prompt=TEMPLATE_MEME_PROMPT.format(
@@ -997,7 +1266,7 @@ class MemePipeline:
                 group_name=group.group_name,
                 source_trends=json.dumps(group.source_trends, ensure_ascii=False, indent=2),
                 summary=group.summary or "",
-                available_humor_types=HUMOR_TYPES,
+                available_humor_types=humor_types_text,
                 templates_json=json.dumps(templates_json, ensure_ascii=False, indent=2),
             ) + "\n\nSTYLE DIRECTION:\n" + self.style["extra_instruction"],
             schema_hint=TEMPLATE_MEME_SCHEMA,
@@ -1080,6 +1349,7 @@ class MemePipeline:
                     image_path=meme.template_path,
                     prompt=prompt,
                     filename=filename,
+                    output_dir=str(self.output_dir),
                 )
             except Exception as e:
                 meme.image_model = "failed"
@@ -1102,9 +1372,16 @@ class MemePipeline:
                 image_path=meme.image_path,
                 signature_path="data/assets/sanpi_signature_v2.png",
             )
+            try:
+                self.generate_social_post_text(meme)
+            except Exception as e:
+                meme.hashtags = []
+                meme.social_post_text = None
+                if self.verbose:
+                    print(f"Social post generation failed: {e}")
+                        
             self.append_meme_log(meme)
             results.append(meme)
-
             if self.verbose:
                 print(f"Generated template meme: {meme.image_path}")
                 print(f"Template: {meme.template_name}")
@@ -1131,6 +1408,8 @@ class MemePipeline:
             Critic ranks template memes
                 ↓
             Render / edit image
+                ↓
+            Generate social post
                 ↓
             Save log
         """
@@ -1167,5 +1446,8 @@ class MemePipeline:
             return selected_memes
         
         if self.verbose:
-            print("\n\n6.STEP: Template Image Editing / Rendering...")
-        return self.generate_memes(selected_memes)
+            print("\n\n6.STEP: Template Image Editing & Social Post Generation + Logging...")
+        try:
+            return self.generate_memes(selected_memes)
+        finally:
+            self.finalize_outputs()

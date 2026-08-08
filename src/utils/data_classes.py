@@ -5,7 +5,36 @@ from typing import Optional
 # -------------------------
 # FIXED VARIABLES
 # -------------------------
-HUMOR_TYPES = ["absurd", "satire", "irony", "relatable", "dark"]
+HUMOR_TYPES = ["absurd", "satire", "irony", "exaggeration", "facial_comedy", "visual_pun", "dark"]
+
+HUMOR_TYPE_GUIDE = {
+    "absurd": (
+        "An impossible or bizarre situation treated as completely normal."
+    ),
+    "satire": (
+        "Expose hypocrisy, power relations, incompetence, privilege, or contradiction."
+    ),
+    "irony": (
+        "Show the opposite of what was promised, claimed, expected, or publicly presented."
+    ),
+    "exaggeration": (
+        "Take a real action, consequence, facial expression, body language, "
+        "or physical trait and push it to an absurd but immediately readable extreme. "
+        "The exaggeration should itself become the joke."
+    ),
+    "facial_comedy": (
+        "The joke comes primarily from exaggerated facial expressions, awkward eye contact, "
+        "embarrassment, fake confidence, panic, smugness, guilt, or denial rather than props."
+    ),
+    "visual_pun": (
+        "Take an idiom, political slogan, economic phrase, or headline wording "
+        "and interpret it literally as a physical scene."
+    ),
+    "dark": (
+        "Use bleak or uncomfortable consequences as the punchline without "
+        "making suffering decorative or gratuitous."
+    ),
+}
 
 SOURCE_NAMES = {
     "reddit": "Reddit",
@@ -113,6 +142,9 @@ class MemeCandidate:
     image_model: Optional[str] = None
     image_path: Optional[str] = None
 
+    hashtags: Optional[list[str]] = None
+    social_post_text: Optional[str] = None
+    
 
 @dataclass
 class NewsGroup:

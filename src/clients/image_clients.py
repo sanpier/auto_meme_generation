@@ -31,8 +31,10 @@ class BaseImageClient(ABC):
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.verbose = verbose
 
-    def _save_bytes(self, image_bytes, filename):
-        path = self.output_dir / filename
+    def _save_bytes(self, image_bytes, filename, output_dir=None):
+        save_dir = Path(output_dir) if output_dir is not None else self.output_dir
+        save_dir.mkdir(parents=True, exist_ok=True)
+        path = save_dir / filename
         with open(path, "wb") as f:
             f.write(image_bytes)
         return str(path)
@@ -70,6 +72,8 @@ class OpenAIImageClient(BaseImageClient):
         size="1024x1024",
         **kwargs,
     ):
+        output_dir = kwargs.pop("output_dir", None)
+
         for _ in range(3):
             try:
                 response = self.client.images.generate(
@@ -87,7 +91,7 @@ class OpenAIImageClient(BaseImageClient):
                 
         image_base64 = response.data[0].b64_json
         image_bytes = base64.b64decode(image_base64)
-        path = self._save_bytes(image_bytes, filename)
+        path = self._save_bytes(image_bytes, filename, output_dir=output_dir)
 
         return ImageResult(
             path=path,
@@ -104,6 +108,8 @@ class OpenAIImageClient(BaseImageClient):
         size="1024x1024",
         **kwargs,
     ):
+        output_dir = kwargs.pop("output_dir", None)
+
         image_path = Path(image_path)
         if not image_path.exists():
             raise FileNotFoundError(f"Template image not found: {image_path}")
@@ -131,7 +137,7 @@ class OpenAIImageClient(BaseImageClient):
 
         image_base64 = response.data[0].b64_json
         image_bytes = base64.b64decode(image_base64)
-        path = self._save_bytes(image_bytes, filename)
+        path = self._save_bytes(image_bytes, filename, output_dir=output_dir)
 
         return ImageResult(
             path=path,
@@ -165,6 +171,8 @@ class GeminiImageClient(BaseImageClient):
         filename="image.png",
         **kwargs,
     ):
+        output_dir = kwargs.pop("output_dir", None)
+
         last_error = None
         for _ in range(3):
             try:
@@ -185,7 +193,8 @@ class GeminiImageClient(BaseImageClient):
 
         generated_image = response.generated_images[0]
         image_bytes = generated_image.image.image_bytes
-        path = self._save_bytes(image_bytes, filename)
+        path = self._save_bytes(image_bytes, filename, output_dir=output_dir)
+
         return ImageResult(
             path=path,
             provider="google",
@@ -218,6 +227,8 @@ class ReplicateImageClient(BaseImageClient):
         filename="image.png",
         **kwargs,
     ):
+        output_dir = kwargs.pop("output_dir", None)
+
         for _ in range(3):
             try:
                 output = self.client.run(
@@ -238,7 +249,7 @@ class ReplicateImageClient(BaseImageClient):
         response = requests.get(image_url, timeout=60)
         response.raise_for_status()
         image_bytes = response.content
-        path = self._save_bytes(image_bytes, filename)
+        path = self._save_bytes(image_bytes, filename, output_dir=output_dir)
 
         return ImageResult(
             path=path,

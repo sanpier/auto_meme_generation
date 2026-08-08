@@ -36,7 +36,7 @@ MEME_SCHEMA = """
             {
                 "visual_gag": "string",
                 "caption": "string",
-                "humor_type": "absurd|satire|irony|relatable|dark",
+                "humor_type": "absurd|satire|irony|exaggeration|visual_pun|dark",
                 "image_prompt": "string"
             }
         ]
@@ -84,7 +84,7 @@ TEMPLATE_MEME_SCHEMA = """
             "template_id": "string",
             "reason": "string",
             "caption": "string",
-            "humor_type": "absurd|satire|irony|relatable|dark",
+            "humor_type": "absurd|satire|irony|exaggeration|visual_pun|dark",
             "meme_text": ["string"],
             "edit_instruction": "string"
         }

@@ -166,6 +166,7 @@ data/
 desktop.ini
 ./desktop.ini
 
+.env
 .git
 .gitignore
 __pycache__
@@ -177,3 +178,7 @@ outputs
 *.jpeg
 *.webp
 *.jsonl
+
+# JSON google-drive files
+credentials-google-drive.json 
+token-google-drive.json

@@ -267,7 +267,7 @@ MEME_GENERATOR_PROMPT = """
     For each meme generate:
     * visual_gag: one short sentence
     * caption: max 6-8 words
-    * humor_type: absurd / satire / irony / relatable / dark
+    * humor_type: choose exactly one from available humor types above.
     * image_prompt
 
     Image prompt rules:
@@ -332,6 +332,8 @@ QUALITY_CRITIC_SYSTEM = f"""
     * one focal point
     * instantly understandable visual gag
     * strong visual contradiction
+    * a humor mechanism that genuinely shapes the joke
+    * a caption that adds to the joke instead of explaining it
 
     Punish:
     * multiple metaphors
@@ -341,11 +343,17 @@ QUALITY_CRITIC_SYSTEM = f"""
     * too many characters
     * background jokes
     * explanation-heavy ideas
+    * generic political criticism presented as humor
+    * humor types assigned only as metadata
 
     A meme that is simple and funny should beat a meme that is complex and ideological.
-    If the joke can be understood in one second: increase score.
-    If the joke requires explanation: decrease score.
-    If an image model might struggle to draw it: decrease score.
+
+    If the joke can be understood in one second, increase the score.
+    If the joke requires explanation, decrease the score.
+    If an image model might struggle to draw it, decrease the score.
+    If the caption merely describes the image, decrease the fun score.
+    If the same joke could be used for many unrelated news stories,
+    decrease the originality score.
 
     Return only valid JSON.
 """
@@ -362,8 +370,23 @@ QUALITY_CRITIC_PROMPT = """
     ANGLE:
     {angle}
 
+    HUMOR TYPE DEFINITIONS:
+    {available_humor_types}
+
     MEMES:
     {memes_json}
+    
+    Humor-type evaluation:
+    - Check whether each meme genuinely uses its claimed humor type.
+    - The selected humor type must determine how the joke works.
+    - Do not reward a meme merely because its humor_type value is valid.
+    - If the claimed humor type does not match the joke, reduce fun_score
+      and originality_score.
+    - Some overlap between humor types is normal. Do not penalize overlap
+      when the claimed type is still the dominant mechanism.
+    - Do not require each meme to use a different humor type.
+    - Judge whether the humor mechanism succeeds, not whether you personally
+      agree with the political message.
 
     Return JSON:
     {{
@@ -382,6 +405,23 @@ QUALITY_CRITIC_PROMPT = """
     - Scores are 1 to 10.
     - Most memes should score between 3 and 8.
     - Scores of 1, 2 or 9, 10 should be rare.
+
+    Score definitions:
+        1. lens_score:
+        - Fit with the socialist and class-conscious editorial lens.
+        - Structural criticism should score higher than generic personal attacks.
+        2. fun_score:
+        - Is there an actual joke, surprise, reversal, escalation, or comic reaction?
+        - A political opinion without a punchline cannot score above 4.
+        - A caption that explains the visual rather than improving it cannot score above 6.
+        3. visual_score:
+        - Can the image be understood immediately?
+        - Can an image model draw it reliably?
+        - One clear action and focal point should score higher.
+        4. originality_score:
+        - Is the visual premise specific and fresh?
+        - Generic rich-versus-poor imagery cannot score above 5.
+        - If the joke could fit many unrelated stories with only names changed, it cannot score above 5.
 """
 
 MEME_PROMPT = """
@@ -559,6 +599,21 @@ TEMPLATE_MEME_PROMPT = """
     AVAILABLE HUMOR TYPES:
     {available_humor_types}
 
+    The selected humor type MUST determine HOW the joke works.
+    Do not invent a joke first and assign a humor type afterward.
+    Instead:
+    1. Pick one humor type.
+    2. Build the entire joke around that mechanism.
+    3. Every major visual decision should reinforce that humor type.
+    If the final meme would still work exactly the same after changing the humor type, you chose the wrong humor type.
+    Examples:
+    - satire: Boss cutting worker salaries while giving himself a golden crown.
+    - irony: Government celebrates affordability while citizens bid at an auction for bread.
+    - absurd: Apartment buildings growing on trees.
+    - exaggeration: A landlord carrying 600 apartment keys like medieval armor.
+    - visual_pun: "Housing bubble" literally becomes a giant floating bubble carrying houses.
+    - dark: Worker smiling while happily entering an enormous debt grinder.
+
     TEMPLATE LIBRARY:
     {templates_json}
 
@@ -580,6 +635,25 @@ TEMPLATE_MEME_PROMPT = """
     - Use English only if source trends are English.
     - If the event is too complex, choose a simpler reaction/comparison template.
     - edit_instruction should briefly say where each short text goes.
+
+    TEMPLATE SELECTION RULES:
+    Do not always choose the most obvious or safest template.
+    All templates are valid candidates. Prefer variety, surprise, and freshness when multiple templates can work.
+    First identify 3-5 templates that could plausibly fit the meme angle.
+    Then choose one from those candidates with mild randomness, not only by strongest fit.
+    A slightly less obvious but still fitting template is better than repeatedly using the same perfect-fit template.
+    Choose based on the joke structure, not just keywords:
+    - choice dilemma
+    - ignored priority
+    - reveal
+    - contradiction
+    - emotional reaction
+    - delayed promise
+    - hidden culprit
+    - bad negotiation
+    - class analysis
+    - absurd escalation
+    Return only one selected template, but internally consider alternatives before choosing.
 
     IMPORTANT:
     meme_texts over the meme template should be easy to relate with each other.
@@ -611,7 +685,7 @@ TEMPLATE_MEME_PROMPT = """
                 "template_id": "...",
                 "reason": "...",
                 "caption": "...",
-                "humor_type": "absurd|satire|irony|relatable|dark",
+                "humor_type": "...",
                 "meme_text": ["...", "..."],
                 "edit_instruction": "..."
             }}
