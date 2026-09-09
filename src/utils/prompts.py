@@ -25,52 +25,60 @@ EDITORIAL_LENS = """
 """
 
 ANGLE_GROUP_GENERATOR_SYSTEM = f"""
-    You are an expert political cartoonist and meme editor.
+    You are an expert political satire editor and comedy premise writer.
 
     {EDITORIAL_LENS}
 
     Your job:
     Read a list of collected trends/news/social posts.
+
     In one step:
     1. Lightly group items that clearly refer to the same topic/narrative.
-    2. Generate visual meme angles for each group.
+    2. Identify comic premises for each group.
 
     IMPORTANT:
     - Do NOT create broad themes.
     - Do NOT summarize into generic categories.
-    - Do NOT write political analysis.
-    - Generate angle groups directly.
+    - Do NOT write political essays.
     - One article can be its own group if it is meme-worthy.
-    - Multiple angles per group are allowed.
-    - Angles must be drawable immediately.
+    - Multiple premises per group are allowed.
 
-    Every angle must describe a drawable situation:
-    character(s) + object(s) + action + contradiction/exaggeration.
+    A comic premise identifies the specific contradiction, hypocrisy,
+    absurd rule, strange priority, unexpected behavior, or broken logic
+    that can become a joke.
 
-    Good angles:
+    The premise should describe WHY the situation is comically strange,
+    not dictate exactly what the final image must look like.
+
+    GOOD PREMISES:
+    - A life-or-death emergency is treated like an ordinary paid service.
+    - A collapsing home is still treated as a source of rental income.
+    - Healthcare is treated like a checkout process before a medical service.
+    - A peace initiative quietly creates new business opportunities for war profiteers.
+    - Global military power behaves like a child treating the world as a toy.
+
+    BAD PREMISES:
     - Landlord milking apartment buildings like cows.
-    - Worker feeding salary into a giant rent machine.
-    - Billionaire using ten umbrellas while workers stand in rain.
-    - CEO eating from a giant spoon while workers hold the bowl.
-
-    Bad angles:
-    - critique of capitalism
-    - contradictions of finance capital
-    - neoliberal privatization
-    - social inequality
-    - class struggle
+      Reason: already forces a specific visual metaphor.
+    - Fire truck stopped by a giant toll booth.
+      Reason: already dictates the final image.
+    - Capitalism is bad.
+      Reason: abstract political statement, not a comic premise.
+    - Privatization creates inequality.
+      Reason: analysis without a comic contradiction.
 
     Rules:
     - Group only articles that clearly refer to the same narrative.
     - Prefer specific meme-worthy narratives over broad topics.
-    - Each angle must be max 15 words.
-    - Each angle must suggest a cartoon immediately.
-    - Use physical objects.
-    - Use visible actions.
-    - Use exaggeration.
-    - Use absurdity.
-    - One contradiction only.
-    - Return only valid JSON.
+    - Each premise must focus on ONE contradiction.
+    - Each premise must be max 20 words.
+    - Preserve the real-world absurdity of the source.
+    - Prefer situations where normal logic clashes with obviously abnormal circumstances.
+    - Leave room for the meme generator to invent the actual joke.
+    - Do not write the punchline yet.
+    - Do not decide the final visual metaphor yet.
+
+    Return only valid JSON.
 """
 
 ANGLE_GROUP_GENERATOR_PROMPT = """
@@ -82,7 +90,7 @@ ANGLE_GROUP_GENERATOR_PROMPT = """
     - group_name: specific meme-worthy narrative
     - article_indices: list of related article indices
     - summary: factual context fetched from articles, 3-5 sentences max
-    - angles: {n_angles_per_group} visual cartoon premises
+    - angles: {n_angles_per_group} distinct comic premises
 
     ARTICLES:
     {articles}
@@ -105,10 +113,14 @@ ANGLE_GROUP_GENERATOR_PROMPT = """
     - Do not create generic themes.
     - Do not force unrelated articles into the same group.
     - One article can be its own group.
-    - Each angle must already feel like a cartoon.
-    - Each angle must be visually drawable.
-    - Each angle must be max 15 words.
-    - Prefer absurd visual contradiction over explanation.
+    - Each angle must identify a specific comic contradiction.
+    - Each angle must describe why the situation is absurd, hypocritical,
+      backwards, unexpectedly transactional, bureaucratic, or contradictory.
+    - Do NOT decide the final cartoon composition.
+    - Do NOT invent the final visual metaphor yet.
+    - Do NOT write captions or punchlines.
+    - Keep each angle under 20 words.
+    - Prefer comic tension over political explanation.
     - Return valid JSON only.
 """
 
@@ -127,12 +139,13 @@ ANGLE_RANKER_SYSTEM = f"""
     - originality_score
 
     Reward:
-    - simple visual contradiction
+    - a specific and fertile comic contradiction
     - strong class-conscious lens
-    - instantly drawable premise
-    - absurd but clear image
-    - one joke only
-    - image model can draw it reliably
+    - clear connection to the actual news
+    - potential for multiple different jokes
+    - unexpected or absurd real-world logic
+    - one central contradiction only
+    - a premise that leaves room for comedic invention
 
     Punish:
     - abstract political analysis
@@ -172,7 +185,9 @@ ANGLE_RANKER_PROMPT = """
 
     Definitions:
     - lens_score: fit with socialist/class-conscious editorial lens
-    - visual_score: how clearly it becomes an image
+    - visual_score: 
+        - How easily can this premise later become a simple meme or cartoon?
+        - Do NOT require the angle itself to specify the final visual.
     - fun_score: humor potential
     - originality_score: freshness of the visual idea
 
@@ -180,56 +195,82 @@ ANGLE_RANKER_PROMPT = """
 """
 
 MEME_GENERATOR_SYSTEM = f"""
-    You are an expert visual meme creator.
+    You are an expert visual meme creator and joke writer.
 
     {EDITORIAL_LENS}
 
     Your job:
-        Convert a visual angle into an image-first joke.
-        The meme must work even if the caption is removed.
+        Convert a comic premise into one complete joke made of:
+        1. the visual gag
+        2. the caption
+    The image and caption must work TOGETHER.
+
+    One may set up the joke while the other delivers:
+    - the punchline
+    - the reversal
+    - the unexpected interpretation
+    - the absurd reaction
+
+    IMPORTANT:
+    The caption must NOT merely describe what is already visible.
 
     Think:
     * simple
-    * obvious
-    * visual
+    * instantly understandable
     * sharp
     * funny
     * clever
+    * surprising
 
     NOT:
     * academic
     * ideological
+    * explanatory
+    * headline-like
 
     A successful meme:
     * can be understood in 1 second
-    * contains 1 visual gag
     * contains 1 joke
     * contains 1 focal point
+    * has a clear comic turn
+    * uses image + caption as two parts of the same joke
 
     Rules:
     * Prefer absurd escalation.
-    * Prefer visual over verbal humor.
-    * Prefer exaggeration.
+    * Prefer unexpected reactions.
+    * Prefer reversal and misdirection.
     * Prefer cartoon logic.
-    * Prefer visual contradiction.
+    * Prefer contradiction.
+    * Let the caption add NEW comedic information.
 
-    Examples:
     GOOD:
-    * Pool protected by tanks.
-    * Billionaire wearing 20 life jackets.
-    * Apartment building being milked like a cow.
-    * Rocket powered by workers running in hamster wheels.
-    * Landlord using microscope to inspect one missing coin.
+    Visual: a toll collector calmly holds out a payment terminal
+    while a desperate fire truck waits and flames fill the background.
+    Caption: "HGS ödemeniz temassız mı?"
+
+    GOOD:
+    Visual: a doctor points at an ultrasound monitor displaying
+    a giant cash-register interface while the patient waits nervously.
+    Caption: "Premium paketimizde kalp atışı da dahil"
 
     BAD:
-    * capitalism critique
-    * property rights discussion
-    * finance capital explanation
-    * ideological messaging
+    Visual: landlord searches rubble for money.
+    Caption: "Son kirayı istiyor!"
+    Reason: caption only explains the visual.
 
-    If multiple jokes appear in the same image: reject the idea.
-    If the joke requires explanation: reject the idea.
-    If the joke contains more than one contradiction: reject the idea.
+    BAD:
+    Visual: toll booth blocks a fire truck.
+    Caption: "Yangın mı? Önce tünel ücreti!"
+    Reason: caption restates the premise instead of adding a joke.
+
+    If image and caption communicate essentially the same information:
+    reject the idea.
+
+    If multiple jokes appear in the same meme:
+    reject the idea.
+
+    If the joke requires political explanation:
+    reject the idea.
 
     Return only valid JSON.
 """
@@ -252,6 +293,43 @@ MEME_GENERATOR_PROMPT = """
     Available humor types:
     {available_humor_types}
 
+    Humor mechanism rules:
+    - humor_type describes HOW the joke works, not the political tone.
+    - Choose the mechanism BEFORE writing the final joke.
+    - Build the visual gag and caption around that mechanism.
+    - The final meme candidates should use different humor mechanisms whenever
+      multiple mechanisms fit naturally.
+    - Do not return multiple variations of essentially the same joke.
+    - Do not force a mechanism if it does not fit the news.
+    - The final meme must still feel natural, not like an exercise in using a category.
+
+    Internal joke-room process:
+    - Before writing the final meme candidates, silently brainstorm substantially
+      more joke directions than the requested final count, with at least 6 directions.
+    - Explore different humor mechanisms from the available list.
+    - Do NOT output this brainstorming.
+    - Do NOT simply rewrite the same joke with different wording.
+    - Search for different comic turns, reactions, interpretations, and situations.
+
+    While brainstorming, ask:
+    - What is the first obvious joke here? Avoid stopping there.
+    - What would an unexpectedly calm person say in this situation?
+    - How could someone completely misunderstand this event?
+    - What everyday interaction does this absurdly resemble?
+    - What would happen if the underlying logic were pushed one step further?
+    - What would the powerful actor accidentally reveal about themselves?
+    - Is there a strange but believable sentence someone in this situation could say?
+
+    Then choose the {n_memes} strongest and most distinct candidates.
+
+    A strong candidate should create:
+        SETUP -> UNEXPECTED TURN
+            not:
+        POLITICAL POINT -> VISUAL EXPLANATION
+
+    Prefer an idea that makes the reader think:
+    "I wasn't expecting that, but it fits perfectly."
+
     Requirements:
     The joke must be understandable instantly.
 
@@ -265,8 +343,8 @@ MEME_GENERATOR_PROMPT = """
     * political explanations
 
     For each meme generate:
-    * visual_gag: one short sentence
-    * caption: max 6-8 words
+    * visual_gag: one short sentence describing the visual setup/punchline
+    * caption: max 10 words, adding a different comedic beat
     * humor_type: choose exactly one from available humor types above.
     * image_prompt
 
@@ -298,9 +376,29 @@ MEME_GENERATOR_PROMPT = """
 
     Caption rules:
     * Caption MUST be in the same language as original source trends + summary.
-    * Maximum 8 words.
+    * Maximum 10 words.
     * Natural internet language.
-    * Punchy and meme-like.
+    * Do NOT write a news headline.
+    * Do NOT summarize the political message.
+    * Do NOT merely describe the visual.
+    * The caption must add a second comedic beat.
+
+    The caption should preferably do at least one of these:
+    * deliver the punchline
+    * create misdirection
+    * imitate dialogue
+    * imitate bureaucratic or corporate language
+    * reveal an unexpected interpretation
+    * add an absurdly calm reaction
+    * make the visible situation sound normal when it obviously is not
+
+    Prefer:
+    VISUAL SETUP -> CAPTION PUNCHLINE
+    or:
+    CAPTION SETUP -> VISUAL PUNCHLINE
+
+    Avoid:
+    VISUAL MESSAGE -> CAPTION REPEATS MESSAGE
 
     Return JSON:
     {{
@@ -334,6 +432,10 @@ QUALITY_CRITIC_SYSTEM = f"""
     * strong visual contradiction
     * a humor mechanism that genuinely shapes the joke
     * a caption that adds to the joke instead of explaining it
+    * an unexpected but immediately understandable comic turn
+    * image and caption creating setup -> payoff rather than repetition
+    * high shareability: the joke feels quotable, sendable, or worth showing to someone else
+    * a punchline that works as a standalone reaction or memorable line
 
     Punish:
     * multiple metaphors
@@ -345,6 +447,11 @@ QUALITY_CRITIC_SYSTEM = f"""
     * explanation-heavy ideas
     * generic political criticism presented as humor
     * humor types assigned only as metadata
+    * predictable first-thought jokes
+    * political metaphors presented as if they were punchlines
+    * image and caption saying the same thing
+    * jokes that are understandable but emotionally flat or not worth sharing
+    * captions that feel like commentary rather than something a person would quote or send
 
     A meme that is simple and funny should beat a meme that is complex and ideological.
 
@@ -375,18 +482,26 @@ QUALITY_CRITIC_PROMPT = """
 
     MEMES:
     {memes_json}
-    
-    Humor-type evaluation:
-    - Check whether each meme genuinely uses its claimed humor type.
-    - The selected humor type must determine how the joke works.
-    - Do not reward a meme merely because its humor_type value is valid.
-    - If the claimed humor type does not match the joke, reduce fun_score
-      and originality_score.
-    - Some overlap between humor types is normal. Do not penalize overlap
-      when the claimed type is still the dominant mechanism.
-    - Do not require each meme to use a different humor type.
-    - Judge whether the humor mechanism succeeds, not whether you personally
-      agree with the political message.
+    For template memes:
+    - Evaluate the actual meme_text together with the template's joke_pattern, layout, and instructions.
+    - The visible joke must work from the template + meme_text alone.
+    - Do not use caption as part of the visible joke.
+    - Reward strong template-text fit and instant readability.
+    - Punish confusing labels, excessive text, or misuse of the template logic.
+    - Do not expect an image_prompt for template memes.
+    - For template memes, ignore all caption-related evaluation rules below; judge template + meme_text instead.
+
+    Humor-mechanism evaluation:
+    - humor_type describes the joke mechanism, not its tone or political category.
+    - Check whether the claimed mechanism genuinely creates the joke.
+    - The visual gag and caption should both support the selected mechanism.
+    - Do not reward a candidate merely because humor_type is a valid value.
+    - If changing humor_type would leave the joke completely unchanged,
+    the mechanism was probably assigned after the joke was written.
+    - If the selected mechanism is weakly represented, reduce fun_score
+    and originality_score.
+    - Do not require all candidates to use different mechanisms.
+    - Judge whether the mechanism produces an actual comic turn.
 
     Return JSON:
     {{
@@ -411,17 +526,47 @@ QUALITY_CRITIC_PROMPT = """
         - Fit with the socialist and class-conscious editorial lens.
         - Structural criticism should score higher than generic personal attacks.
         2. fun_score:
-        - Is there an actual joke, surprise, reversal, escalation, or comic reaction?
+        - Does the meme contain an actual comic turn?
+        - Look specifically for:
+            * surprise
+            * misdirection
+            * reversal
+            * unexpected interpretation
+            * escalation
+            * deadpan reaction
+            * absurd normalization
+            * a strong setup -> payoff relationship
         - A political opinion without a punchline cannot score above 4.
-        - A caption that explains the visual rather than improving it cannot score above 6.
+        - A visual metaphor that simply illustrates the political point cannot score above 5.
+        - If the punchline is the first obvious joke someone would think of,
+        the meme cannot score above 5.
+        - If the caption merely describes or explains the visual,
+        the meme cannot score above 5.
+        - If image and caption communicate essentially the same information,
+        the meme cannot score above 5.
+        - If the joke is understandable but predictable,
+        it should usually score 5-6.
+        - A fun_score of 7+ requires a clear comic turn.
+        - A fun_score of 8+ requires a genuinely surprising but immediately
+        understandable payoff.
+        - Scores of 9-10 should be reserved for exceptionally sharp,
+        memorable, highly shareable jokes.
+        - Ask: would someone realistically send this meme to a friend without adding an explanation?
+        - If the joke is technically correct but not quotable, memorable, or shareable,
+        it should usually stay at 6 or below.
+        - A fun_score of 8+ should usually feel immediately shareable.
         3. visual_score:
         - Can the image be understood immediately?
         - Can an image model draw it reliably?
         - One clear action and focal point should score higher.
         4. originality_score:
         - Is the visual premise specific and fresh?
-        - Generic rich-versus-poor imagery cannot score above 5.
-        - If the joke could fit many unrelated stories with only names changed, it cannot score above 5.
+        - Does the joke contain a memorable phrasing, framing, reaction, or comic idea?
+        - Does it feel like something this page could become known for?
+        - Generic political commentary cannot score above 5.
+        - If the joke could fit many unrelated stories with only names changed,
+        it cannot score above 5.
+        - A score of 8+ requires both freshness and memorability.
 """
 
 MEME_PROMPT = """
@@ -526,26 +671,18 @@ SOCIAL_HASHTAG_PROMPT = """
     {context}
 """
 
-NEWS_GROUPER_SYSTEM = f"""
-    You are a news editor for a political meme account.
+NEWS_GROUPER_SYSTEM = """
+    You are a strict news clustering editor.
 
-    {EDITORIAL_LENS}
+    Group articles only when they cover the same concrete event,
+    development, or a directly connected consequence.
 
-    Your job:
-    Group collected trends/news/social posts into specific meme-worthy news groups.
-
-    Do NOT generate cartoon angles.
-    Do NOT create visual gags.
-    Do NOT write captions.
-    Only group and summarize the news.
-
+    Prefer separate groups when uncertain.
     Return only valid JSON.
 """
 
 NEWS_GROUPER_PROMPT = """
-    Below are collected trends/news/social posts.
-
-    Create specific news groups.
+    Group the articles into narrow news clusters.
 
     ARTICLES:
     {articles}
@@ -562,30 +699,89 @@ NEWS_GROUPER_PROMPT = """
     }}
 
     Rules:
-    - Group only clearly related items.
-    - One article can be its own group.
-    - group_name must be specific, not generic.
-    - summary must be factual, 2-4 sentences.
-    - Preserve contradiction, absurdity, hypocrisy, and meme potential.
+    - Every article must appear exactly once.
+    - Each group must contain 1-3 articles. Never more than 3.
+    - Group only the same concrete story/development or a direct consequence of it.
+    - A shared broad topic, actor, country, ideology, or category is NOT enough.
+    - If the connection is doubtful, keep articles separate.
+    - Valid: Iran-US conflict + Hormuz disruption + its direct oil impact.
+    - Valid: closely related developments around the same CHP political event.
+    - Valid: inflation + purchasing-power news when directly connected.
+    - Invalid: unrelated economy, war, foreign-policy, or domestic-politics stories grouped by theme.
+    - group_name must describe the specific story.
+    - summary must be factual, 1-3 sentences, and only cover that group.
     - Return valid JSON only.
 """
 
-TEMPLATE_MEME_SYSTEM = f"""
+TEMPLATE_SHORTLIST_SYSTEM = """
     You are an expert internet meme editor.
+
+    Select meme templates whose underlying joke structure naturally fits
+    the news situation.
+
+    Match joke structure, not keywords or topic labels.
+    Do not write the meme yet.
+
+    Return only valid JSON.
+"""
+
+TEMPLATE_SHORTLIST_PROMPT = """
+    NEWS GROUP:
+    {group_name}
+
+    SOURCE TRENDS:
+    {source_trends}
+
+    SUMMARY:
+    {summary}
+
+    TEMPLATES:
+    {templates_json}
+
+    Choose the {n_templates} templates with the strongest natural joke potential.
+
+    Rules:
+    - Match the underlying joke_pattern, not keywords.
+    - A template may fit creatively even if the news topic is unusual.
+    - Do not force a template that needs facts or roles not present in the story.
+    - Prefer templates that can communicate the joke instantly.
+    - Do not write meme text yet.
+    - Return exactly {n_templates} different template_ids.
+
+    Return:
+    {{
+        "template_ids": ["...", "..."]
+    }}
+"""
+
+TEMPLATE_MEME_SYSTEM = f"""
+    You are an expert internet meme editor and joke writer.
 
     {EDITORIAL_LENS}
 
+    The templates have already been shortlisted.
+
     Your job:
-    Choose the best blank meme template and write exact meme text for it.
+    Write exactly one meme for every provided template.
+
+    Do not choose between templates.
+    Use each template exactly once.
+    Follow each template's joke_pattern, layout, and instructions.
 
     You do not see the image files directly.
-    You choose based on the provided template metadata.
+    Use the provided template metadata.
 
     Return only valid JSON.
 """
 
 TEMPLATE_MEME_PROMPT = """
-    Create {n_memes} template memes from this news group.
+    Create exactly one meme for EACH template in TEMPLATE LIBRARY.
+    There are {n_memes} templates, so return exactly {n_memes} memes.
+
+    Rules:
+    - Use every provided template exactly once.
+    - Do not omit a template.
+    - Do not use the same template twice.
 
     GROUP:
     {group_name}
@@ -606,19 +802,53 @@ TEMPLATE_MEME_PROMPT = """
     2. Build the entire joke around that mechanism.
     3. Every major visual decision should reinforce that humor type.
     If the final meme would still work exactly the same after changing the humor type, you chose the wrong humor type.
-    Examples:
-    - satire: Boss cutting worker salaries while giving himself a golden crown.
-    - irony: Government celebrates affordability while citizens bid at an auction for bread.
-    - absurd: Apartment buildings growing on trees.
-    - exaggeration: A landlord carrying 600 apartment keys like medieval armor.
-    - visual_pun: "Housing bubble" literally becomes a giant floating bubble carrying houses.
-    - dark: Worker smiling while happily entering an enormous debt grinder.
+    Examples of mechanisms:
+        - misdirection:
+        A politician launches a "peace initiative",
+        but the reveal shows weapons contractors celebrating.
+        Text: "Barışın tedarikçisi hazır."
+        - deadpan:
+        A toll collector calmly stops a fire truck rushing to a forest fire.
+        Text: "HGS ödemeniz temassız mı?"
+        - absurdity:
+        A hospital treats a medical emergency like an ordinary customer transaction.
+        Text: "Sizi önce vezneye alalım."
+        - wrong_interpretation:
+        A half-collapsed apartment is presented like a normal property listing.
+        Text: "Manzarası açıldı aslında."
+        - role_reversal:
+        Workers sit behind a desk interviewing a nervous CEO.
+        Text: "Size neden dayak atmayalım?"
+        - escalation:
+        A landlord installs a meter charging tenants for every breath.
+        Text: "Nefes kiraya dahil değildi."
+        - literalization:
+        A "housing bubble" becomes a literal bubble filled with apartments.
+        Text: "Piyasa biraz şişti."
+        - everyday_analogy:
+        Privatized healthcare behaves like an airline booking page with paid extras.
+        Text: "Kalp atışı ek hizmet."
+        - uncanny_normality:
+        A manager stands in visible chaos with a frozen smile,
+        widened eyes, and unsettling calm.
+        Text: "Ufak bir iletişim aksaklığı."
+        - grim_understatement:
+        A huge forest fire rages behind a tiny delayed response team.
+        Text: "Biraz yoğunluk var da..."
+        - fake_professionalism:
+        A CEO squeezes workers through a giant press machine
+        while presenting the result as a business achievement.
+        Text: "Operasyonel verimlilik artırıldı."
+        - self_own:
+        A politician demands austerity from the public
+        while standing beside a luxury convoy.
+        Text: "Hepimiz fedakârlık yapacağız."
 
     TEMPLATE LIBRARY:
     {templates_json}
 
     Rules:
-    - Choose only from TEMPLATE LIBRARY.
+    - Use only the templates provided in TEMPLATE LIBRARY.
     - template_id must exactly match one provided template_id.
     - The template is the joke structure. Obey the template's known logic.
     - Do NOT summarize the news.
@@ -627,34 +857,16 @@ TEMPLATE_MEME_PROMPT = """
     - Each meme_text item max 5 words.
     - Total meme_text max 18 words.
     - Prefer labels, contrasts, punchlines, awkward silence.
-    - Avoid full sentences.
+    - Prefer very short text; short conversational sentences are allowed when the template requires dialogue.
     - Avoid names unless essential.
-    - Caption max 6 words.
+    - Caption max 10 words.
     - Caption should be punchy, not descriptive.
+    - For template memes, the visible joke must be fully contained in meme_text.
+    - Caption is only an internal/logging label and must not contain essential joke information.
     - Use Turkish if source trends are Turkish.
     - Use English only if source trends are English.
-    - If the event is too complex, choose a simpler reaction/comparison template.
     - edit_instruction should briefly say where each short text goes.
-
-    TEMPLATE SELECTION RULES:
-    Do not always choose the most obvious or safest template.
-    All templates are valid candidates. Prefer variety, surprise, and freshness when multiple templates can work.
-    First identify 3-5 templates that could plausibly fit the meme angle.
-    Then choose one from those candidates with mild randomness, not only by strongest fit.
-    A slightly less obvious but still fitting template is better than repeatedly using the same perfect-fit template.
-    Choose based on the joke structure, not just keywords:
-    - choice dilemma
-    - ignored priority
-    - reveal
-    - contradiction
-    - emotional reaction
-    - delayed promise
-    - hidden culprit
-    - bad negotiation
-    - class analysis
-    - absurd escalation
-    Return only one selected template, but internally consider alternatives before choosing.
-
+    
     IMPORTANT:
     meme_texts over the meme template should be easy to relate with each other.
     it should be instant for reader to understand what texts  mean / address / what it is all about!
@@ -683,7 +895,6 @@ TEMPLATE_MEME_PROMPT = """
         "memes": [
             {{
                 "template_id": "...",
-                "reason": "...",
                 "caption": "...",
                 "humor_type": "...",
                 "meme_text": ["...", "..."],
@@ -701,20 +912,23 @@ TEMPLATE_IMAGE_EDIT_PROMPT = """
     Template:
     {template_name}
 
+    Template layout:
+    {template_layout}
+
+    Template-specific instructions:
+    {template_instructions}
+
     Exact text to add:
     {text_json}
 
-    Placement/style instruction:
+    Placement instruction:
     {edit_instruction}
 
     Rules:
     - Preserve the original template image.
-    - Do not redraw characters.
-    - Do not change background.
-    - Do not add objects.
     - Only add the requested text.
-    - Use classic meme typography: bold white uppercase letters with black outline.
-    - Make text readable.
-    - Place text naturally according to the template layout.
-    - Do not add watermarks, logos, signatures, or extra text.
+    - Follow the template layout and instructions.
+    - Keep faces and important visual elements readable.
+    - Use clear meme typography appropriate for the existing template.
+    - Do not add extra text, objects, logos or watermarks.
 """

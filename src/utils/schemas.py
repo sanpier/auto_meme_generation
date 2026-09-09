@@ -36,7 +36,7 @@ MEME_SCHEMA = """
             {
                 "visual_gag": "string",
                 "caption": "string",
-                "humor_type": "absurd|satire|irony|exaggeration|visual_pun|dark",
+                "humor_type": "misdirection|deadpan|absurdity|wrong_interpretation|role_reversal|escalation|literalization|everyday_analogy|uncanny_normality|grim_understatement|fake_professionalism|self_own",
                 "image_prompt": "string"
             }
         ]
@@ -77,14 +77,21 @@ NEWS_GROUP_SCHEMA = """
 }
 """
 
+TEMPLATE_SHORTLIST_SCHEMA = """
+{
+    "template_ids": [
+        "string"
+    ]
+}
+"""
+
 TEMPLATE_MEME_SCHEMA = """
 {
     "memes": [
         {
             "template_id": "string",
-            "reason": "string",
             "caption": "string",
-            "humor_type": "absurd|satire|irony|exaggeration|visual_pun|dark",
+            "humor_type": "misdirection|deadpan|absurdity|wrong_interpretation|role_reversal|escalation|literalization|everyday_analogy|uncanny_normality|grim_understatement|fake_professionalism|self_own",
             "meme_text": ["string"],
             "edit_instruction": "string"
         }

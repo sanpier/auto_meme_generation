@@ -5,36 +5,61 @@ from typing import Optional
 # -------------------------
 # FIXED VARIABLES
 # -------------------------
-HUMOR_TYPES = ["absurd", "satire", "irony", "exaggeration", "facial_comedy", "visual_pun", "dark"]
-
 HUMOR_TYPE_GUIDE = {
-    "absurd": (
-        "An impossible or bizarre situation treated as completely normal."
+    "misdirection": (
+        "Set up one expectation, then reveal an unexpected interpretation "
+        "or outcome. The joke should turn in a different direction than expected."
     ),
-    "satire": (
-        "Expose hypocrisy, power relations, incompetence, privilege, or contradiction."
+    "deadpan": (
+        "Treat an obviously absurd, cruel, or inappropriate situation as if it "
+        "were completely normal through calm dialogue or routine language."
     ),
-    "irony": (
-        "Show the opposite of what was promised, claimed, expected, or publicly presented."
+    "absurdity": (
+        "Apply ordinary procedures, fees, forms, rules, approvals, customer-service "
+        "language, or bureaucracy to a situation where they are absurdly inappropriate."
     ),
-    "exaggeration": (
-        "Take a real action, consequence, facial expression, body language, "
-        "or physical trait and push it to an absurd but immediately readable extreme. "
-        "The exaggeration should itself become the joke."
+    "wrong_interpretation": (
+        "Deliberately interpret the real event in a technically plausible but absurd "
+        "way, creating a funny alternative reading of what happened."
     ),
-    "facial_comedy": (
-        "The joke comes primarily from exaggerated facial expressions, awkward eye contact, "
-        "embarrassment, fake confidence, panic, smugness, guilt, or denial rather than props."
+    "role_reversal": (
+        "Reverse the expected roles, responsibilities, power relations, or beneficiaries "
+        "to expose the contradiction."
     ),
-    "visual_pun": (
-        "Take an idiom, political slogan, economic phrase, or headline wording "
-        "and interpret it literally as a physical scene."
+    "escalation": (
+        "Take the real contradiction one ridiculous step further while keeping the "
+        "connection to the source immediately understandable."
     ),
-    "dark": (
-        "Use bleak or uncomfortable consequences as the punchline without "
-        "making suffering decorative or gratuitous."
+    "literalization": (
+        "Turn an abstract phrase, euphemism, political slogan, corporate term, or "
+        "economic concept into a literal physical situation."
     ),
+    "everyday_analogy": (
+        "Reframe the political or economic situation as a familiar everyday interaction "
+        "such as shopping, renting, subscriptions, customer service, dating, work, family life or etc."
+    ),
+    "uncanny_normality": (
+        "Show an obviously unacceptable, disturbing, or absurd situation while the caption "
+        "describes it as completely ordinary. The main character's facial expression or body "
+        "language should subtly reveal that something is deeply wrong: widened eyes, strained "
+        "smile, frozen stare, awkward mouth, nervous posture, or unsettling calm."
+    ),
+    "grim_understatement": (
+        "Use calm, restrained, or almost casual language to describe something severe, cruel, "
+        "dangerous, or disastrous. The humor comes from the extreme mismatch between the seriousness "
+        "of the situation and how mildly it is described."
+    ),
+    "fake_professionalism": (
+        "Frame exploitation, disaster, corruption, or dysfunction using polished corporate, "
+        "consulting, HR, marketing, customer-service, or management language as if it were a normal success."
+    ),
+    "self_own": (
+        "Let the powerful actor accidentally expose their own hypocrisy, incompetence, greed, "
+        "or contradiction through what they say or do. The joke works because they condemn themselves."
+    )
 }
+
+HUMOR_TYPES = list(HUMOR_TYPE_GUIDE.keys())
 
 SOURCE_NAMES = {
     "reddit": "Reddit",
@@ -46,6 +71,10 @@ STYLE_PROFILES = {
     "balanced": {
         "extra_instruction": """
             Keep the meme balanced: funny, visual, politically sharp, but not preachy.
+            Prefer a clear comic turn, strong visual readability, and a caption that adds
+            a second comedic beat instead of explaining the image.
+            Favor surprise, misdirection, deadpan, absurdity, reversal, or everyday analogy
+            when they fit naturally.
         """,
         "meme_weights": {
             "fun": 0.35,
@@ -57,24 +86,31 @@ STYLE_PROFILES = {
     "fun": {
         "extra_instruction": """
             Make the meme funnier and less didactic.
-            Prefer absurdity, surprise, exaggeration, irony, and relatable internet humor.
-            Avoid slogans, moral lessons, political explaining, and educational captions.
+            Prioritize surprise, misdirection, deadpan, absurdity, wrong interpretation,
+            escalation, uncanny normality, and everyday analogy.
+            Prefer jokes with a clear setup -> unexpected turn.
+            Avoid slogans, moral lessons, political explaining, educational captions,
+            obvious first-thought jokes, and captions that merely restate the visual.
             The viewer should laugh first and understand the politics second.
         """,
         "meme_weights": {
             "fun": 0.50,
-            "visual": 0.30,
+            "visual": 0.25,
             "lens": 0.10,
-            "originality": 0.10,
+            "originality": 0.15,
         }
     },
     "political": {
         "extra_instruction": """
-            Make the meme more ideologically sharp, but still visual and not essay-like.
+            Make the meme more ideologically sharp while keeping it funny and visual.
+            Prefer structural class contradictions, hypocrisy, exploitation, rent-seeking,
+            privatization, and power relations over personal moral criticism.
+            Still require an actual comic turn: political clarity must not replace the joke.
+            Avoid slogans, essays, and captions that simply explain the political message.
         """,
         "meme_weights": {
-            "fun": 0.20,
-            "visual": 0.30,
+            "fun": 0.25,
+            "visual": 0.25,
             "lens": 0.40,
             "originality": 0.10,
         }
@@ -161,9 +197,9 @@ class MemeTemplate:
     template_id: str
     name: str
     image_path: str
-    best_for: list[str]
+    joke_pattern: str
     layout: str
-    notes: Optional[str] = None
+    instructions: str
 
 
 @dataclass
@@ -171,6 +207,7 @@ class TemplateMemeCandidate(MemeCandidate):
     template_id: Optional[str] = None
     template_name: Optional[str] = None
     template_path: Optional[str] = None
+    template_layout: Optional[str] = None
+    template_instructions: Optional[str] = None
     meme_text: Optional[list[str]] = None
     edit_instruction: Optional[str] = None
-    reason: Optional[str] = None

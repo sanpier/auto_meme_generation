@@ -395,7 +395,7 @@ def instagram_post(
             last_error: Exception | None = None
 
             for attempt in range(3):
-                time.sleep(5)
+                time.sleep(10)
                 try:
                     container_id = _create_media_container(image_url, caption)
                     break

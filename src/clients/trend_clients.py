@@ -12,6 +12,7 @@ from typing import Optional
 PERIOD_TO_DELTA = {
     "hourly": timedelta(hours=1),
     "daily": timedelta(days=1),
+    "triday": timedelta(days=3),
     "weekly": timedelta(days=7),
     "monthly": timedelta(days=30),
     "quarterly": timedelta(days=90),

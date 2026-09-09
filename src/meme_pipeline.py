@@ -37,7 +37,7 @@ class MemePipeline:
 
         self.upload_to_drive = upload_to_drive
         self.temp_root_dir = None
-        self.template_json_path = "data/assets/meme_template.json"
+        self.template_json_path = "data/assets/meme_template_v2.json"
 
         if self.upload_to_drive:
             self.temp_root_dir = Path(tempfile.mkdtemp(prefix="tmp"))
@@ -329,16 +329,28 @@ class MemePipeline:
         angle: str,
         memes: list[MemeCandidate],
     ) -> list[MemeCandidate]:
-        memes_json = [
-            {
-                "meme_index": i,
-                "visual_gag": meme.visual_gag,
-                "caption": meme.caption,
-                "humor_type": meme.humor_type,
-                "image_prompt": meme.image_prompt,
-            }
-            for i, meme in enumerate(memes)
-        ]
+        memes_json = []
+        for i, meme in enumerate(memes):
+            if isinstance(meme, TemplateMemeCandidate):
+                memes_json.append({
+                    "meme_index": i,
+                    "template_name": meme.template_name,
+                    "joke_pattern": meme.visual_gag,
+                    "layout": meme.template_layout,
+                    "instructions": meme.template_instructions,
+                    "meme_text": meme.meme_text,
+                    "caption": meme.caption,
+                    "humor_type": meme.humor_type,
+                    "edit_instruction": meme.edit_instruction,
+                })
+            else:
+                memes_json.append({
+                    "meme_index": i,
+                    "visual_gag": meme.visual_gag,
+                    "caption": meme.caption,
+                    "humor_type": meme.humor_type,
+                    "image_prompt": meme.image_prompt,
+                })
         humor_types_text = "\n".join(
             f"- {name}: {description}"
             for name, description in HUMOR_TYPE_GUIDE.items()
@@ -407,7 +419,9 @@ class MemePipeline:
         min_score: float = 7.0,
         max_memes: int | None = 5,
     ) -> list[MemeCandidate]:
-        selected = [meme for meme in memes if meme.meme_score >= min_score]
+        selected = [meme for meme in memes
+                    if meme.meme_score >= min_score
+                    and meme.fun_score >= 7]
         selected = sorted(selected, key=lambda x: x.meme_score, reverse=True)
 
         if max_memes is not None:
@@ -723,6 +737,12 @@ class MemePipeline:
             "caption": meme.caption,
             "humor_type": meme.humor_type,
             "image_prompt": meme.image_prompt,
+            "template": {
+                "template_id": getattr(meme, "template_id", None),
+                "template_name": getattr(meme, "template_name", None),
+                "meme_text": getattr(meme, "meme_text", None),
+                "edit_instruction": getattr(meme, "edit_instruction", None),
+            },
             "scores": {
                 "lens_score": meme.lens_score,
                 "fun_score": meme.fun_score,
@@ -1188,17 +1208,22 @@ class MemePipeline:
                 articles=json.dumps(articles, ensure_ascii=False, indent=2),
             ),
             schema_hint=NEWS_GROUP_SCHEMA,
-            temperature=0.6,
+            temperature=0.2,
         )
 
         groups = []
+        used_indices = set()
         for group in data.get("news_groups", []):
-            idxs = [
+            idxs = list(dict.fromkeys(
                 idx for idx in group.get("article_indices", [])
-                if isinstance(idx, int) and 0 <= idx < len(trends)
-            ]
+                if isinstance(idx, int)
+                and 0 <= idx < len(trends)
+                and idx not in used_indices
+            ))[:3]
             if not idxs:
                 continue
+
+            used_indices.update(idxs)
 
             groups.append(
                 NewsGroup(
@@ -1208,6 +1233,22 @@ class MemePipeline:
                     source_urls=[trends[idx].url for idx in idxs if trends[idx].url],
                     source_sources=sorted(set(trends[idx].source for idx in idxs)),
                     summary=group.get("summary", ""),
+                )
+            )
+
+        # Anything omitted by the LLM becomes its own group.
+        for idx, trend in enumerate(trends):
+            if idx in used_indices:
+                continue
+
+            groups.append(
+                NewsGroup(
+                    group_name=trend.trend_name,
+                    article_indices=[idx],
+                    source_trends=[trend.trend_name],
+                    source_urls=[trend.url] if trend.url else [],
+                    source_sources=[trend.source],
+                    summary=(trend.metadata or {}).get("summary", ""),
                 )
             )
 
@@ -1225,21 +1266,68 @@ class MemePipeline:
 
     def load_templates(self) -> list[MemeTemplate]:
         with open(self.template_json_path, "r", encoding="utf-8") as f:
-            items = json.load(f)
+            data = json.load(f)
 
-        templates = []
-        for item in items:
-            templates.append(
-                MemeTemplate(
-                    template_id=item["template_id"],
-                    name=item["name"],
-                    image_path=item["image_path"],
-                    best_for=item.get("best_for", []),
-                    layout=item.get("layout", ""),
-                    notes=item.get("notes"),
-                )
+        return [
+            MemeTemplate(
+                template_id=item["template_id"],
+                name=item["name"],
+                image_path=item["image_path"],
+                joke_pattern=item["joke_pattern"],
+                layout=item["layout"],
+                instructions=item["instructions"],
             )
-        return templates
+            for item in data["templates"]
+        ]
+
+    def shortlist_templates_for_group(
+        self,
+        group: NewsGroup,
+        templates: list[MemeTemplate],
+        n_templates: int = 3,
+    ) -> list[MemeTemplate]:
+
+        templates_json = [
+            {
+                "template_id": t.template_id,
+                "joke_pattern": t.joke_pattern,
+            } for t in templates
+        ]
+
+        data = self.text_llm.generate_json(
+            system=TEMPLATE_SHORTLIST_SYSTEM,
+            prompt=TEMPLATE_SHORTLIST_PROMPT.format(
+                group_name=group.group_name,
+                source_trends=json.dumps(
+                    group.source_trends,
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                summary=group.summary or "",
+                templates_json=json.dumps(
+                    templates_json,
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                n_templates=n_templates,
+            ),
+            schema_hint=TEMPLATE_SHORTLIST_SCHEMA,
+            temperature=0.3,
+        )
+
+        template_by_id = {
+            t.template_id: t
+            for t in templates
+        }
+
+        selected = []
+        seen = set()
+        for template_id in data.get("template_ids", []):
+            if template_id in template_by_id and template_id not in seen:
+                selected.append(template_by_id[template_id])
+                seen.add(template_id)
+
+        return selected[:n_templates]
 
     def generate_template_memes_for_group(
         self,
@@ -1250,9 +1338,9 @@ class MemePipeline:
             {
                 "template_id": template.template_id,
                 "name": template.name,
-                "best_for": template.best_for,
+                "joke_pattern": template.joke_pattern,
                 "layout": template.layout,
-                "notes": template.notes,
+                "instructions": template.instructions,
             } for template in templates
         ]
         humor_types_text = "\n".join(
@@ -1262,7 +1350,7 @@ class MemePipeline:
         data = self.text_llm.generate_json(
             system=TEMPLATE_MEME_SYSTEM,
             prompt=TEMPLATE_MEME_PROMPT.format(
-                n_memes=self.n_memes_per_angle,
+                n_memes=len(templates),
                 group_name=group.group_name,
                 source_trends=json.dumps(group.source_trends, ensure_ascii=False, indent=2),
                 summary=group.summary or "",
@@ -1270,17 +1358,21 @@ class MemePipeline:
                 templates_json=json.dumps(templates_json, ensure_ascii=False, indent=2),
             ) + "\n\nSTYLE DIRECTION:\n" + self.style["extra_instruction"],
             schema_hint=TEMPLATE_MEME_SCHEMA,
-            temperature=1.5,
+            temperature=1.0,
         )
 
         template_by_id = {template.template_id: template for template in templates}
         memes = []
+        seen_templates = set()
         for item in data.get("memes", []):
             template = template_by_id.get(item.get("template_id"))
             if not template:
                 continue
+            if template.template_id in seen_templates:
+                continue
             if item.get("humor_type") not in HUMOR_TYPES:
                 continue
+            seen_templates.add(template.template_id)
 
             meme_text = item.get("meme_text") or []
             if isinstance(meme_text, str):
@@ -1293,16 +1385,17 @@ class MemePipeline:
                     source_sources=group.source_sources,
                     summary=group.summary,
                     angle="",
-                    visual_gag=f"Template meme using {template.name}",
+                    visual_gag=template.joke_pattern,
                     caption=item.get("caption", ""),
                     humor_type=item["humor_type"],
                     image_prompt="",
                     template_id=template.template_id,
                     template_name=template.name,
                     template_path=template.image_path,
+                    template_layout=template.layout,
+                    template_instructions=template.instructions,
                     meme_text=meme_text,
                     edit_instruction=item.get("edit_instruction", ""),
-                    reason=item.get("reason"),
                     text_model=getattr(self.text_llm, "last_used_model", None),
                 )
             )
@@ -1312,14 +1405,26 @@ class MemePipeline:
         self,
         groups: list[NewsGroup],
         templates: list[MemeTemplate],
+        n_templates: int = 3,
     ) -> list[TemplateMemeCandidate]:
         all_memes = []
         for group in groups:
             try:
-                memes = self.generate_template_memes_for_group(group, templates)
+                shortlisted = self.shortlist_templates_for_group(
+                    group, templates, n_templates=n_templates
+                )
+                memes = self.generate_template_memes_for_group(
+                    group, shortlisted
+                )
+
                 all_memes.extend(memes)
                 if self.verbose:
-                    print(f"[TEMPLATE MEMES] generated {len(memes)} | {group.group_name}")
+                    print(
+                        f"[TEMPLATE MEMES] "
+                        f"{len(shortlisted)} shortlisted → "
+                        f"{len(memes)} written | {group.group_name}"
+                    )
+
             except Exception as e:
                 if self.verbose:
                     print(f"Template meme generation failed: {group.group_name} | {e}")
@@ -1340,7 +1445,13 @@ class MemePipeline:
             filename = f"meme_{i:03d}_{safe_caption}.png"
             prompt = TEMPLATE_IMAGE_EDIT_PROMPT.format(
                 template_name=meme.template_name,
-                text_json=json.dumps(meme.meme_text, ensure_ascii=False, indent=2),
+                template_layout=meme.template_layout,
+                template_instructions=meme.template_instructions,
+                text_json=json.dumps(
+                    meme.meme_text,
+                    ensure_ascii=False,
+                    indent=2,
+                ),
                 edit_instruction=meme.edit_instruction,
             )
 
@@ -1397,17 +1508,24 @@ class MemePipeline:
         min_meme_score: float = 7.0,
         max_groups: int | None = 10,
         max_memes: int | None = 5,
+        n_templates: int = 3,
     ):
         """
             Get Trends
                 ↓
             Group / summarize news
                 ↓
-            LLM selects template + writes meme text
+            Load meme templates
                 ↓
-            Critic ranks template memes
+            Shortlist fitting templates for each news group
                 ↓
-            Render / edit image
+            Write one meme for every shortlisted template
+                ↓
+            Critic scores all written meme candidates
+                ↓
+            Select global Top-N memes
+                ↓
+            Render / edit Top-N templates only
                 ↓
             Generate social post
                 ↓
@@ -1425,10 +1543,11 @@ class MemePipeline:
 
         if self.verbose:
             print(f"Loaded templates: {len(templates)}")
-            print("\n\n3.STEP: Template Selection + Text Generation...")
+            print("\n\n3.STEP: Shortlist Templates + Write Meme Candidates...")
         meme_candidates = self.generate_all_template_memes(
             groups=groups,
             templates=templates,
+            n_templates=n_templates,
         )
 
         if self.verbose:
@@ -1436,7 +1555,7 @@ class MemePipeline:
         scored_memes = self.score_all_memes(meme_candidates)
 
         if self.verbose:
-            print("\n\n5.STEP: Select Passing Memes...")
+            print("\n\n5.STEP: Global Top Meme Selection...")
         selected_memes = self.select_passing_memes(
             scored_memes,
             min_score=min_meme_score,
